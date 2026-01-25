@@ -3,10 +3,14 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func getEnv(key, defaultValue string) string {
@@ -18,7 +22,8 @@ func getEnv(key, defaultValue string) string {
 }
 
 const (
-	storageDirKey = "STORAGE_DIR"
+	storageDirKey       = "STORAGE_DIR"
+	cleanupThresholdKey = "CLEANUP_THRESHOLD"
 )
 
 func uploadTaskOutput(w http.ResponseWriter, req *http.Request) {
@@ -98,7 +103,51 @@ func handleTask(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func cleanupOldRecords(cleanupThreshold time.Duration) {
+	storageDir := getEnv(storageDirKey, os.TempDir())
+	err := filepath.Walk(storageDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		stat, ok := info.Sys().(*unix.Stat_t)
+		if !ok {
+			log.Printf("Skipping %s: no syscall.Stat_t", path)
+			return nil
+		}
+
+		atime := time.Unix(int64(stat.Atim.Sec), int64(stat.Atim.Nsec))
+		if time.Since(atime) > cleanupThreshold {
+			log.Printf("Removing %s: last accessed %s ago", path, time.Since(atime))
+			return os.Remove(path)
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Error walking the storage directory: %v", err)
+	}
+}
+
 func main() {
+
+	cleanupThreshold, err := time.ParseDuration(getEnv(cleanupThresholdKey, "1h"))
+
+	if err != nil {
+		log.Fatalf("Invalid cleanup threshold: %v", err)
+	}
+
+	go func() {
+		ticker := time.NewTicker(cleanupThreshold)
+		for range ticker.C {
+			cleanupOldRecords(cleanupThreshold)
+		}
+	}()
+
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/v1/cache/{hash}", handleTask)
 
