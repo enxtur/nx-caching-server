@@ -82,6 +82,11 @@ func downloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	w.Write(body)
 }
 
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "OK")
+}
+
 func handleTask(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "PUT":
@@ -94,6 +99,7 @@ func handleTask(w http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
+	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/v1/cache/{hash}", handleTask)
 
 	http.ListenAndServe(":8090", nil)
