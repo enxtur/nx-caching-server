@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -25,6 +26,7 @@ const (
 	storageDirKey       = "STORAGE_DIR"
 	cleanupThresholdKey = "CLEANUP_THRESHOLD"
 	portKey             = "PORT"
+	authTokenKey        = "AUTH_TOKEN"
 )
 
 func uploadTaskOutput(w http.ResponseWriter, req *http.Request) {
@@ -86,6 +88,35 @@ func downloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Length", strconv.FormatInt(int64(len(body)), 10))
 	w.WriteHeader(http.StatusOK)
 	w.Write(body)
+}
+
+func checkBearerToken(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		authToken := os.Getenv(authTokenKey)
+		if authToken == "" {
+			next(w, req)
+			return
+		}
+
+		authHeader := req.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Access forbidden", http.StatusUnauthorized)
+			return
+		}
+
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			http.Error(w, "Access forbidden", http.StatusUnauthorized)
+			return
+		}
+
+		if parts[1] != authToken {
+			http.Error(w, "Access forbidden", http.StatusUnauthorized)
+			return
+		}
+
+		next(w, req)
+	}
 }
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -152,7 +183,7 @@ func main() {
 	}()
 
 	http.HandleFunc("/health", handleHealth)
-	http.HandleFunc("/v1/cache/{hash}", handleTask)
+	http.HandleFunc("/v1/cache/{hash}", checkBearerToken(handleTask))
 
 	port := getEnv(portKey, "8090")
 
