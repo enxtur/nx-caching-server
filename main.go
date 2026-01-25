@@ -9,6 +9,18 @@ import (
 	"strconv"
 )
 
+func getEnv(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
+}
+
+const (
+	storageDirKey = "STORAGE_DIR"
+)
+
 func uploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	contentLengthString := req.Header.Get("Content-Length")
 	if contentLengthString == "" {
@@ -23,7 +35,8 @@ func uploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	}
 
 	hash := req.PathValue("hash")
-	filePath := filepath.Join("caches", fmt.Sprintf("%s.cache", hash))
+	storageDir := getEnv(storageDirKey, os.TempDir())
+	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash))
 
 	_, err = os.Stat(filePath)
 	if err == nil {
@@ -50,7 +63,8 @@ func uploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 
 func downloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	hash := req.PathValue("hash")
-	filePath := filepath.Join("caches", fmt.Sprintf("%s.cache", hash))
+	storageDir := getEnv(storageDirKey, os.TempDir())
+	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash))
 
 	body, err := os.ReadFile(filePath)
 	if err != nil {
