@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func getEnv(key, defaultValue string) string {
+func GetEnv(key, defaultValue string) string {
 	value := os.Getenv(key)
 	if value == "" {
 		return defaultValue
@@ -29,7 +29,7 @@ const (
 	authTokenKey        = "AUTH_TOKEN"
 )
 
-func uploadTaskOutput(w http.ResponseWriter, req *http.Request) {
+func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	contentLengthString := req.Header.Get("Content-Length")
 	if contentLengthString == "" {
 		http.Error(w, "Content-Length header is required", http.StatusBadRequest)
@@ -43,7 +43,7 @@ func uploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	}
 
 	hash := req.PathValue("hash")
-	storageDir := getEnv(storageDirKey, os.TempDir())
+	storageDir := GetEnv(storageDirKey, os.TempDir())
 	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash))
 
 	_, err = os.Stat(filePath)
@@ -69,9 +69,9 @@ func uploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "Successfully uploaded the output")
 }
 
-func downloadTaskOutput(w http.ResponseWriter, req *http.Request) {
+func DownloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	hash := req.PathValue("hash")
-	storageDir := getEnv(storageDirKey, os.TempDir())
+	storageDir := GetEnv(storageDirKey, os.TempDir())
 	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash))
 
 	body, err := os.ReadFile(filePath)
@@ -90,7 +90,7 @@ func downloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	w.Write(body)
 }
 
-func checkBearerToken(next http.HandlerFunc) http.HandlerFunc {
+func CheckBearerTokenMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		authToken := os.Getenv(authTokenKey)
 		if authToken == "" {
@@ -119,24 +119,24 @@ func checkBearerToken(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func handleHealth(w http.ResponseWriter, _ *http.Request) {
+func HandleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "OK")
 }
 
-func handleTask(w http.ResponseWriter, req *http.Request) {
+func HandleTask(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "PUT":
-		uploadTaskOutput(w, req)
+		UploadTaskOutput(w, req)
 	case "GET":
-		downloadTaskOutput(w, req)
+		DownloadTaskOutput(w, req)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 func cleanupOldRecords(cleanupThreshold time.Duration) {
-	storageDir := getEnv(storageDirKey, os.TempDir())
+	storageDir := GetEnv(storageDirKey, os.TempDir())
 	err := filepath.Walk(storageDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -167,7 +167,7 @@ func cleanupOldRecords(cleanupThreshold time.Duration) {
 
 func main() {
 
-	cleanupThreshold, err := time.ParseDuration(getEnv(cleanupThresholdKey, "1h"))
+	cleanupThreshold, err := time.ParseDuration(GetEnv(cleanupThresholdKey, "1h"))
 
 	if err != nil {
 		log.Fatalf("Invalid cleanup threshold: %v", err)
@@ -182,10 +182,10 @@ func main() {
 		}
 	}()
 
-	http.HandleFunc("/health", handleHealth)
-	http.HandleFunc("/v1/cache/{hash}", checkBearerToken(handleTask))
+	http.HandleFunc("/health", HandleHealth)
+	http.HandleFunc("/v1/cache/{hash}", CheckBearerTokenMiddleware(HandleTask))
 
-	port := getEnv(portKey, "8090")
+	port := GetEnv(portKey, "8090")
 
 	http.ListenAndServe(fmt.Sprintf(":%s", port), nil)
 }
