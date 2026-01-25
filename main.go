@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,7 +32,7 @@ func uploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	}
 
 	body := make([]byte, contentLength)
-	_, err = req.Body.Read(body)
+	_, err = io.ReadFull(io.LimitReader(req.Body, contentLength), body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
 		return
