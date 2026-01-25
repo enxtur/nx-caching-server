@@ -24,6 +24,7 @@ func getEnv(key, defaultValue string) string {
 const (
 	storageDirKey       = "STORAGE_DIR"
 	cleanupThresholdKey = "CLEANUP_THRESHOLD"
+	portKey             = "PORT"
 )
 
 func uploadTaskOutput(w http.ResponseWriter, req *http.Request) {
@@ -153,5 +154,7 @@ func main() {
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/v1/cache/{hash}", handleTask)
 
-	http.ListenAndServe(":8090", nil)
+	port := getEnv(portKey, "8090")
+
+	http.ListenAndServe(fmt.Sprintf(":%s", port), nil)
 }
