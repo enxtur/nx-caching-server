@@ -143,8 +143,10 @@ func main() {
 
 	go func() {
 		ticker := time.NewTicker(cleanupThreshold)
-		for range ticker.C {
+		defer ticker.Stop()
+		for {
 			cleanupOldRecords(cleanupThreshold)
+			<-ticker.C
 		}
 	}()
 
