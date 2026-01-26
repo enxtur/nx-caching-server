@@ -1,1 +1,5 @@
-caches/*
+*_test.go
+*.md
+.github
+LICENSE
+*.json
