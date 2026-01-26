@@ -92,10 +92,10 @@ func DownloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	storageDir := GetEnv(storageDirKey, os.TempDir())
 	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash))
 
-	body, err := os.ReadFile(filePath)
+	stat, err := os.Stat(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			http.Error(w, "The record was not found", http.StatusNotFound)
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		http.Error(w, "Failed to read the file", http.StatusInternalServerError)
@@ -103,9 +103,9 @@ func DownloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", strconv.FormatInt(int64(len(body)), 10))
-	w.WriteHeader(http.StatusOK)
-	w.Write(body)
+	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
+
+	http.ServeFile(w, req, filePath)
 }
 
 func CheckBearerTokenMiddleware(next http.HandlerFunc) http.HandlerFunc {
