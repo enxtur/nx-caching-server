@@ -222,6 +222,25 @@ func TestHandleTask(t *testing.T) {
 		}
 	})
 
+	t.Run("should handle HEAD request", func(t *testing.T) {
+		filePath := filepath.Join(tmpDir, "testhash3.cache")
+		os.WriteFile(filePath, []byte("test"), 0644)
+
+		req := httptest.NewRequest("HEAD", "/v1/cache/testhash3", nil)
+		req.SetPathValue("hash", "testhash3")
+		w := httptest.NewRecorder()
+
+		HandleTask(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+		}
+
+		if w.Body.String() != "" {
+			t.Errorf("expected body '', got '%s'", w.Body.String())
+		}
+	})
+
 	t.Run("should reject unsupported method", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/v1/cache/testhash", nil)
 		req.SetPathValue("hash", "testhash")

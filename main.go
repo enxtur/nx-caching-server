@@ -69,6 +69,24 @@ func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "Successfully uploaded the output")
 }
 
+func CheckTaskOutput(w http.ResponseWriter, req *http.Request) {
+	hash := req.PathValue("hash")
+	storageDir := GetEnv(storageDirKey, os.TempDir())
+	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash))
+
+	_, err := os.Stat(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to check the file", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func DownloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	hash := req.PathValue("hash")
 	storageDir := GetEnv(storageDirKey, os.TempDir())
@@ -128,6 +146,8 @@ func HandleTask(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "PUT":
 		UploadTaskOutput(w, req)
+	case "HEAD":
+		CheckTaskOutput(w, req)
 	case "GET":
 		DownloadTaskOutput(w, req)
 	default:
