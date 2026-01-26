@@ -48,7 +48,7 @@ func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 
 	_, err = os.Stat(filePath)
 	if err == nil {
-		http.Error(w, "Cannot override an existing record", http.StatusConflict)
+		w.WriteHeader(http.StatusConflict)
 		return
 	}
 
@@ -66,7 +66,6 @@ func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Successfully uploaded the output")
 }
 
 func CheckTaskOutput(w http.ResponseWriter, req *http.Request) {
@@ -118,18 +117,18 @@ func CheckBearerTokenMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		authHeader := req.Header.Get("Authorization")
 		if authHeader == "" {
-			http.Error(w, "Access forbidden", http.StatusUnauthorized)
+			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			http.Error(w, "Access forbidden", http.StatusUnauthorized)
+			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 
 		if parts[1] != authToken {
-			http.Error(w, "Access forbidden", http.StatusUnauthorized)
+			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 
