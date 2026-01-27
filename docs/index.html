@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nx Caching Server - Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #4F46E5;
+            --primary-dark: #4338CA;
+            --secondary: #10B981;
+            --text: #1F2937;
+            --text-light: #6B7280;
+            --bg: #FFFFFF;
+            --bg-alt: #F9FAFB;
+            --border: #E5E7EB;
+            --code-bg: #1E293B;
+            --code-text: #E2E8F0;
+            --shadow: rgba(0, 0, 0, 0.1);
+            --shadow-lg: rgba(0, 0, 0, 0.15);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background: var(--bg);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 3rem 0;
+            box-shadow: 0 4px 6px var(--shadow);
+        }
+
+        header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            font-size: 1.25rem;
+            opacity: 0.95;
+        }
+
+        /* Navigation */
+        nav {
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 4px var(--shadow);
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            padding: 1rem 0;
+            gap: 2rem;
+        }
+
+        nav a {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+            padding: 0.5rem 0;
+        }
+
+        nav a:hover {
+            color: var(--primary);
+        }
+
+        /* Main Content */
+        main {
+            padding: 3rem 0;
+        }
+
+        section {
+            margin-bottom: 4rem;
+            scroll-margin-top: 80px;
+        }
+
+        section h2 {
+            font-size: 2.5rem;
+            color: var(--primary);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid var(--primary);
+        }
+
+        section h3 {
+            font-size: 1.75rem;
+            color: var(--text);
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        section h4 {
+            font-size: 1.25rem;
+            color: var(--text);
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        section p {
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+
+        section ul,
+        section ol {
+            margin-left: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        section li {
+            margin-bottom: 0.5rem;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: var(--bg);
+            box-shadow: 0 1px 3px var(--shadow);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        table thead {
+            background: var(--primary);
+            color: white;
+        }
+
+        table th {
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        table td {
+            padding: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        table tbody tr:hover {
+            background: var(--bg-alt);
+        }
+
+        /* Code Blocks */
+        pre {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+            box-shadow: 0 4px 6px var(--shadow);
+        }
+
+        code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        pre code {
+            color: var(--code-text);
+        }
+
+        /* Inline Code */
+        p code,
+        li code,
+        td code {
+            background: var(--bg-alt);
+            color: var(--primary-dark);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            box-shadow: 0 2px 4px var(--shadow);
+        }
+
+        .card h4 {
+            color: var(--primary);
+            margin-top: 0;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+
+        .badge-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .badge-secondary {
+            background: var(--secondary);
+            color: white;
+        }
+
+        /* API Endpoints */
+        .endpoint {
+            background: var(--bg-alt);
+            border-left: 4px solid var(--primary);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 4px;
+        }
+
+        .endpoint-method {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-right: 0.75rem;
+        }
+
+        .method-get {
+            background: #10B981;
+            color: white;
+        }
+
+        .method-put {
+            background: #F59E0B;
+            color: white;
+        }
+
+        .method-head {
+            background: #6366F1;
+            color: white;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--bg-alt);
+            border-top: 1px solid var(--border);
+            padding: 2rem 0;
+            margin-top: 4rem;
+            text-align: center;
+            color: var(--text-light);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 2rem;
+            }
+
+            header p {
+                font-size: 1rem;
+            }
+
+            section h2 {
+                font-size: 2rem;
+            }
+
+            nav ul {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            table {
+                font-size: 0.875rem;
+            }
+
+            table th,
+            table td {
+                padding: 0.75rem;
+            }
+        }
+
+        /* Scroll behavior */
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Highlight */
+        .highlight {
+            background: linear-gradient(120deg, rgba(79, 70, 229, 0.2) 0%, rgba(79, 70, 229, 0.1) 100%);
+            padding: 0.1rem 0.3rem;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="container">
+            <h1>🚀 Nx Caching Server</h1>
+            <p>A lightweight, self-hosted remote cache solution for Nx workspaces</p>
+        </div>
+    </header>
+
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#configuration">Configuration</a></li>
+                <li><a href="#getting-started">Getting Started</a></li>
+                <li><a href="#api">API Reference</a></li>
+                <li><a href="#docker">Docker</a></li>
+                <li><a href="#license">License</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="container">
+        <section id="overview">
+            <h2>Overview</h2>
+            <p>
+                <strong>Nx Caching Server</strong> is a custom remote caching server for <a href="https://nx.dev"
+                    target="_blank" style="color: var(--primary);">Nx</a>,
+                written in Go. This implementation follows the Nx OpenAPI specification (v20.8+) and provides a
+                lightweight,
+                self-hosted remote cache solution.
+            </p>
+            <p>
+                Since Nx 20.8, you can use your own caching server by implementing their OpenAPI spec.
+                This server handles storage, retrieval, and optional bearer-token authentication.
+            </p>
+            <div class="card">
+                <h4>Key Features</h4>
+                <ul>
+                    <li>✅ <strong>Lightweight</strong> - Built with Go for performance and efficiency</li>
+                    <li>✅ <strong>Self-hosted</strong> - Full control over your cache infrastructure</li>
+                    <li>✅ <strong>Secure</strong> - Optional bearer token authentication</li>
+                    <li>✅ <strong>Automatic Cleanup</strong> - Configurable cache expiration</li>
+                    <li>✅ <strong>Docker Ready</strong> - Pre-built images available</li>
+                    <li>✅ <strong>Nx Compatible</strong> - Follows Nx OpenAPI specification v20.8+</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="configuration">
+            <h2>Configuration</h2>
+            <p>
+                Configure the server using environment variables. All configuration options are optional and have
+                sensible defaults.
+            </p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Description</th>
+                        <th>Default</th>
+                        <th>Example</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>STORAGE_DIR</code></td>
+                        <td>Directory for storing cache artifacts</td>
+                        <td>System temp dir</td>
+                        <td><code>/data/nx-cache</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>CLEANUP_THRESHOLD</code></td>
+                        <td>Duration after which unused cache entries are removed (hours only)</td>
+                        <td><code>1h</code></td>
+                        <td><code>1h</code>, <code>24h</code>, <code>168h</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>PORT</code></td>
+                        <td>Port the server listens on</td>
+                        <td><code>8090</code></td>
+                        <td><code>8080</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>AUTH_TOKEN</code></td>
+                        <td>Bearer token required for all requests (optional)</td>
+                        <td>(unset = no auth)</td>
+                        <td><code>my-secure-token</code></td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="card">
+                <h4>📝 Note</h4>
+                <p>
+                    <code>CLEANUP_THRESHOLD</code> uses hour-based durations (e.g., <code>24h</code> = 1 day,
+                    <code>168h</code> = 1 week).
+                    The cleanup process runs automatically at the specified interval and removes cache entries that
+                    haven't been accessed
+                    within the threshold period.
+                </p>
+            </div>
+        </section>
+
+        <section id="getting-started">
+            <h2>Getting Started</h2>
+
+            <h3>Build from Source</h3>
+            <p>Build and run the server from source code:</p>
+
+            <h4>1. Clone the repository</h4>
+            <pre><code>git clone https://github.com/enxtur/nx-caching-server.git
+cd nx-caching-server</code></pre>
+
+            <h4>2. Build the binary</h4>
+            <pre><code>go build -o nx-caching-server ./main.go</code></pre>
+
+            <h4>3. Run it</h4>
+            <pre><code>./nx-caching-server</code></pre>
+
+            <h4>4. With custom settings</h4>
+            <pre><code>STORAGE_DIR=./cache-data \
+PORT=8090 \
+AUTH_TOKEN=super-secret-123 \
+CLEANUP_THRESHOLD=24h \
+./nx-caching-server</code></pre>
+
+            <h3>Configuring Nx Workspace</h3>
+            <p>
+                Point your Nx workspace to the caching server by setting these environment variables
+                (or add them to <code>.env</code> / CI config):
+            </p>
+
+            <h4>Without Authentication</h4>
+            <pre><code>export NX_SELF_HOSTED_REMOTE_CACHE_SERVER=http://localhost:8090</code></pre>
+
+            <h4>With Authentication</h4>
+            <pre><code>export NX_SELF_HOSTED_REMOTE_CACHE_SERVER=http://localhost:8090
+export NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN=your-secure-token-here</code></pre>
+
+            <p>Then run your tasks as usual:</p>
+            <pre><code>npx nx run-many --target=build --all</code></pre>
+
+            <p>
+                Nx will automatically read from / write to your self-hosted cache, significantly speeding up
+                your build times across different machines and CI/CD pipelines.
+            </p>
+        </section>
+
+        <section id="api">
+            <h2>API Reference</h2>
+            <p>
+                The server implements the Nx OpenAPI specification (v20.8+). All endpoints support optional
+                bearer token authentication when <code>AUTH_TOKEN</code> is configured.
+            </p>
+
+            <h3>Health Check</h3>
+            <div class="endpoint">
+                <span class="endpoint-method method-get">GET</span>
+                <strong>/health</strong>
+                <p style="margin-top: 0.5rem; margin-bottom: 0;">Returns <code>200 OK</code> with body "OK" if the
+                    server is running.</p>
+            </div>
+
+            <h3>Cache Operations</h3>
+            <p>All cache operations use the same endpoint with different HTTP methods:</p>
+
+            <div class="endpoint">
+                <span class="endpoint-method method-put">PUT</span>
+                <strong>/v1/cache/{hash}</strong>
+                <p style="margin-top: 0.5rem; margin-bottom: 0;">
+                    Uploads a cache artifact. Requires <code>Content-Length</code> header.
+                    Returns <code>200 OK</code> on success, <code>409 Conflict</code> if already exists.
+                </p>
+            </div>
+
+            <div class="endpoint">
+                <span class="endpoint-method method-head">HEAD</span>
+                <strong>/v1/cache/{hash}</strong>
+                <p style="margin-top: 0.5rem; margin-bottom: 0;">
+                    Checks if a cache artifact exists. Returns <code>200 OK</code> if found,
+                    <code>404 Not Found</code> if missing.
+                </p>
+            </div>
+
+            <div class="endpoint">
+                <span class="endpoint-method method-get">GET</span>
+                <strong>/v1/cache/{hash}</strong>
+                <p style="margin-top: 0.5rem; margin-bottom: 0;">
+                    Downloads a cache artifact. Returns <code>200 OK</code> with the file content,
+                    <code>404 Not Found</code> if missing.
+                </p>
+            </div>
+
+            <h3>Authentication</h3>
+            <p>
+                When <code>AUTH_TOKEN</code> is set, all requests must include a Bearer token in the
+                <code>Authorization</code> header:
+            </p>
+            <pre><code>Authorization: Bearer your-secure-token-here</code></pre>
+            <p>
+                Requests without a valid token will receive <code>401 Unauthorized</code>.
+            </p>
+        </section>
+
+        <section id="docker">
+            <h2>Docker Deployment</h2>
+
+            <h3>Using Pre-built Image</h3>
+            <p>Pull the pre-built image from Docker Hub:</p>
+            <pre><code>docker pull enxtur/nx-caching-server</code></pre>
+
+            <h4>Run with Docker</h4>
+            <p>Example with persistent storage and authentication:</p>
+            <pre><code>docker run -d \
+  --name nx-cache \
+  -p 8090:8090 \
+  -v $(pwd)/nx-cache-data:/data \
+  -e STORAGE_DIR=/data \
+  -e AUTH_TOKEN=your-secure-token-here \
+  -e CLEANUP_THRESHOLD=48h \
+  enxtur/nx-caching-server</code></pre>
+
+            <h3>Build from Source</h3>
+            <p>Or build your own image from source:</p>
+            <pre><code>docker build -t nx-caching-server .</code></pre>
+
+            <h3>Using Docker Compose</h3>
+            <p>Create a <code>docker-compose.yml</code> file:</p>
+            <pre><code>version: '3.8'
+
+services:
+  nx-cache:
+    image: enxtur/nx-caching-server:latest
+    container_name: nx-caching-server
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./nx-cache-data:/data
+    environment:
+      - STORAGE_DIR=/data
+      - PORT=8090
+      - AUTH_TOKEN=your-secure-token-here          # remove this line if you want no authentication
+      - CLEANUP_THRESHOLD=24h</code></pre>
+
+            <p>Start it:</p>
+            <pre><code>docker compose up -d</code></pre>
+
+            <div class="card">
+                <h4>🐳 Docker Image Details</h4>
+                <p>
+                    The Docker image is built using a multi-stage build process:
+                </p>
+                <ul>
+                    <li><strong>Builder stage:</strong> Uses <code>golang:1.25.6-alpine</code> to compile the Go
+                        application</li>
+                    <li><strong>Runtime stage:</strong> Uses <code>alpine:3.23</code> for a minimal final image</li>
+                    <li><strong>Size:</strong> Optimized for minimal footprint</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="license">
+            <h2>License</h2>
+            <div class="card">
+                <h4>MIT License</h4>
+                <p><strong>Copyright (c) 2025 Interview Aloud Contributors</strong></p>
+                <p>
+                    Permission is hereby granted, free of charge, to any person obtaining a copy
+                    of this software and associated documentation files (the "Software"), to deal
+                    in the Software without restriction, including without limitation the rights
+                    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+                    copies of the Software, and to permit persons to whom the Software is
+                    furnished to do so, subject to the following conditions:
+                </p>
+                <p>
+                    The above copyright notice and this permission notice shall be included in all
+                    copies or substantial portions of the Software.
+                </p>
+                <p>
+                    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+                    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+                    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+                    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+                    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+                    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+                    SOFTWARE.
+                </p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>
+                <strong>Nx Caching Server</strong> - A lightweight, self-hosted remote cache solution for Nx workspaces
+            </p>
+            <p style="margin-top: 0.5rem;">
+                Contributions, bug reports, and feature suggestions are welcome!
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scroll for navigation links
+        document.querySelectorAll('nav a').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Highlight current section in navigation
+        const sections = document.querySelectorAll('section');
+        const navLinks = document.querySelectorAll('nav a');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (window.pageYOffset >= sectionTop - 100) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.style.color = '';
+                if (link.getAttribute('href') === `#${current}`) {
+                    link.style.color = 'var(--primary)';
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
