@@ -173,6 +173,10 @@ func cleanupOldRecords(cleanupThreshold time.Duration) {
 			return nil
 		}
 
+		if !strings.HasSuffix(path, ".cache") {
+			return nil
+		}
+
 		stat, ok := info.Sys().(*unix.Stat_t)
 		if !ok {
 			log.Printf("Skipping %s: no syscall.Stat_t", path)
