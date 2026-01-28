@@ -1,3 +1,4 @@
+// Nx Caching Server
 package main
 
 import (
@@ -46,24 +47,24 @@ func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	storageDir := GetEnv(storageDirKey, os.TempDir())
 	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash))
 
-	_, err = os.Stat(filePath)
-	if err == nil {
-		w.WriteHeader(http.StatusConflict)
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		if os.IsExist(err) {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		http.Error(w, "Failed to create file", http.StatusInternalServerError)
 		return
 	}
 
-	body := make([]byte, contentLength)
-	_, err = io.ReadFull(io.LimitReader(req.Body, contentLength), body)
+	_, err = io.CopyN(file, req.Body, contentLength)
 	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		file.Close()
+		os.Remove(filePath) // Clean up incomplete file
+		http.Error(w, "Failed to write file", http.StatusInternalServerError)
 		return
 	}
-
-	err = os.WriteFile(filePath, body, 0644)
-	if err != nil {
-		http.Error(w, "Failed to write to file", http.StatusInternalServerError)
-		return
-	}
+	file.Close()
 
 	w.WriteHeader(http.StatusOK)
 }
