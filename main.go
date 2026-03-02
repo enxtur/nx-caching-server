@@ -177,13 +177,13 @@ func cleanupOldRecords(cleanupThreshold time.Duration) {
 			return nil
 		}
 
-		stat, ok := info.Sys().(*unix.Stat_t)
-		if !ok {
-			log.Printf("Skipping %s: no syscall.Stat_t", path)
+		var stat unix.Stat_t
+		if err := unix.Stat(path, &stat); err != nil {
+			log.Printf("Skipping %s: unix.Stat failed: %v", path, err)
 			return nil
 		}
 
-		atime := time.Unix(int64(stat.Atim.Sec), int64(stat.Atim.Nsec))
+		atime := time.Unix(stat.Atim.Sec, stat.Atim.Nsec)
 		if time.Since(atime) > cleanupThreshold {
 			log.Printf("Removing %s: last accessed %s ago", path, time.Since(atime))
 			return os.Remove(path)
