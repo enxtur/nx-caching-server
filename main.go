@@ -164,6 +164,11 @@ func HandleTask(w http.ResponseWriter, req *http.Request) {
 
 func cleanupOldRecords(cleanupThreshold time.Duration) {
 	storageDir := GetEnv(storageDirKey, os.TempDir())
+
+	if !strings.HasSuffix(storageDir, "/") {
+		storageDir = storageDir + "/"
+	}
+
 	err := filepath.Walk(storageDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
