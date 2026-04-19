@@ -9,7 +9,7 @@ COPY . .
 
 RUN go build -o main main.go
 
-FROM alpine:3.23.3
+FROM alpine:3.23.4
 
 COPY --from=builder /app/main /app/main
 
