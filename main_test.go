@@ -115,7 +115,7 @@ func TestCheckBearerTokenMiddleware(t *testing.T) {
 
 	t.Run("should allow request when no token is configured", func(t *testing.T) {
 		os.Unsetenv(authTokenKey)
-		middleware := CheckBearerTokenMiddleware(handler)
+		middleware := CheckBearerTokenMiddleware(getAuthTokenHash(), handler)
 
 		req := httptest.NewRequest("GET", "/", nil)
 		w := httptest.NewRecorder()
@@ -130,7 +130,7 @@ func TestCheckBearerTokenMiddleware(t *testing.T) {
 	t.Run("should allow request with valid token", func(t *testing.T) {
 		os.Setenv(authTokenKey, "test-token")
 		defer os.Unsetenv(authTokenKey)
-		middleware := CheckBearerTokenMiddleware(handler)
+		middleware := CheckBearerTokenMiddleware(getAuthTokenHash(), handler)
 
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Header.Set("Authorization", "Bearer test-token")
@@ -146,7 +146,7 @@ func TestCheckBearerTokenMiddleware(t *testing.T) {
 	t.Run("should reject request with invalid token", func(t *testing.T) {
 		os.Setenv(authTokenKey, "test-token")
 		defer os.Unsetenv(authTokenKey)
-		middleware := CheckBearerTokenMiddleware(handler)
+		middleware := CheckBearerTokenMiddleware(getAuthTokenHash(), handler)
 
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Header.Set("Authorization", "Bearer wrong-token")
@@ -162,7 +162,7 @@ func TestCheckBearerTokenMiddleware(t *testing.T) {
 	t.Run("should reject request without Authorization header", func(t *testing.T) {
 		os.Setenv(authTokenKey, "test-token")
 		defer os.Unsetenv(authTokenKey)
-		middleware := CheckBearerTokenMiddleware(handler)
+		middleware := CheckBearerTokenMiddleware(getAuthTokenHash(), handler)
 
 		req := httptest.NewRequest("GET", "/", nil)
 		w := httptest.NewRecorder()
