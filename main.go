@@ -2,6 +2,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"fmt"
 	"io"
 	"log"
@@ -115,10 +117,19 @@ func DownloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	io.Copy(w, file)
 }
 
-func CheckBearerTokenMiddleware(next http.HandlerFunc) http.HandlerFunc {
+func getAuthTokenHash() *[32]byte {
+	authToken := os.Getenv(authTokenKey)
+	if authToken == "" {
+		return nil
+	}
+
+	hash := sha256.Sum256([]byte(authToken))
+	return &hash
+}
+
+func CheckBearerTokenMiddleware(authTokenHash *[32]byte, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		authToken := os.Getenv(authTokenKey)
-		if authToken == "" {
+		if authTokenHash == nil {
 			next(w, req)
 			return
 		}
@@ -135,7 +146,9 @@ func CheckBearerTokenMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		if parts[1] != authToken {
+		userAuthTokenHash := sha256.Sum256([]byte(parts[1]))
+
+		if subtle.ConstantTimeCompare(authTokenHash[:], userAuthTokenHash[:]) != 1 {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -219,7 +232,7 @@ func main() {
 	}()
 
 	http.HandleFunc("/health", HandleHealth)
-	http.HandleFunc("/v1/cache/{hash}", CheckBearerTokenMiddleware(HandleTask))
+	http.HandleFunc("/v1/cache/{hash}", CheckBearerTokenMiddleware(getAuthTokenHash(), HandleTask))
 
 	port := GetEnv(portKey, "8090")
 
