@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -252,4 +253,51 @@ func TestHandleTask(t *testing.T) {
 			t.Errorf("expected status %d, got %d", http.StatusMethodNotAllowed, w.Code)
 		}
 	})
+}
+
+func TestInvalidHashRejected(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.Setenv(storageDirKey, filepath.Join(tmpDir, "storage"))
+	defer os.Unsetenv(storageDirKey)
+	os.Mkdir(filepath.Join(tmpDir, "storage"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, "secret.cache"), []byte("secret"), 0644)
+
+	hashes := []string{"../secret", "../../etc/x", "a/b", `a\b`, "..", ".", "", "a.b", strings.Repeat("a", 129)}
+	for _, method := range []string{"PUT", "HEAD", "GET"} {
+		for _, hash := range hashes {
+			req := httptest.NewRequest(method, "/v1/cache/x", bytes.NewBufferString("pwned"))
+			req.Header.Set("Content-Length", "5")
+			req.SetPathValue("hash", hash)
+			w := httptest.NewRecorder()
+
+			HandleTask(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("%s %q: expected status %d, got %d", method, hash, http.StatusBadRequest, w.Code)
+			}
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(tmpDir, "x.cache")); !os.IsNotExist(err) {
+		t.Error("file was created outside the storage directory")
+	}
+}
+
+func TestPathTraversalThroughRouter(t *testing.T) {
+	tmpDir := t.TempDir()
+	os.Setenv(storageDirKey, filepath.Join(tmpDir, "storage"))
+	defer os.Unsetenv(storageDirKey)
+	os.Mkdir(filepath.Join(tmpDir, "storage"), 0755)
+	os.WriteFile(filepath.Join(tmpDir, "secret.cache"), []byte("secret"), 0644)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/cache/{hash}", HandleTask)
+
+	req := httptest.NewRequest("GET", "/v1/cache/..%2Fsecret", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d (body %q)", http.StatusBadRequest, w.Code, w.Body.String())
+	}
 }

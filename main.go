@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -32,7 +33,26 @@ const (
 	authTokenKey        = "AUTH_TOKEN"
 )
 
+// validHash allows only characters that cannot form path separators or
+// traversal sequences, so the hash is always a single file name.
+var validHash = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+
+// cacheFilePath returns the storage path for hash, or false if hash is invalid.
+func cacheFilePath(hash string) (string, bool) {
+	if !validHash.MatchString(hash) {
+		return "", false
+	}
+	storageDir := GetEnv(storageDirKey, os.TempDir())
+	return filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash)), true
+}
+
 func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
+	filePath, ok := cacheFilePath(req.PathValue("hash"))
+	if !ok {
+		http.Error(w, "Invalid hash", http.StatusBadRequest)
+		return
+	}
+
 	contentLengthString := req.Header.Get("Content-Length")
 	if contentLengthString == "" {
 		http.Error(w, "Content-Length header is required", http.StatusBadRequest)
@@ -44,10 +64,6 @@ func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Invalid Content-Length header", http.StatusBadRequest)
 		return
 	}
-
-	hash := req.PathValue("hash")
-	storageDir := GetEnv(storageDirKey, os.TempDir())
-	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash))
 
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
@@ -72,9 +88,11 @@ func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 }
 
 func CheckTaskOutput(w http.ResponseWriter, req *http.Request) {
-	hash := req.PathValue("hash")
-	storageDir := GetEnv(storageDirKey, os.TempDir())
-	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash))
+	filePath, ok := cacheFilePath(req.PathValue("hash"))
+	if !ok {
+		http.Error(w, "Invalid hash", http.StatusBadRequest)
+		return
+	}
 
 	_, err := os.Stat(filePath)
 	if err != nil {
@@ -90,9 +108,11 @@ func CheckTaskOutput(w http.ResponseWriter, req *http.Request) {
 }
 
 func DownloadTaskOutput(w http.ResponseWriter, req *http.Request) {
-	hash := req.PathValue("hash")
-	storageDir := GetEnv(storageDirKey, os.TempDir())
-	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash))
+	filePath, ok := cacheFilePath(req.PathValue("hash"))
+	if !ok {
+		http.Error(w, "Invalid hash", http.StatusBadRequest)
+		return
+	}
 
 	file, err := os.Open(filePath)
 	if err != nil {
