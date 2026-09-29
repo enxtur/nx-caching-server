@@ -473,6 +473,17 @@
               <td>(unset = no auth)</td>
               <td><code>my-secure-token</code></td>
             </tr>
+            <tr>
+              <td><code>AUTH_TOKENS</code></td>
+              <td>
+                Comma-separated <code>name:token</code> pairs, one per
+                repository. Each token only sees
+                <code>STORAGE_DIR/&lt;name&gt;/</code>. Cannot be combined with
+                <code>AUTH_TOKEN</code> (optional)
+              </td>
+              <td>(unset)</td>
+              <td><code>repoA:tokA,repoB:tokB</code></td>
+            </tr>
           </tbody>
         </table>
         <div class="card">
@@ -538,7 +549,7 @@ export NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN=your-secure-token-here</code></p
         <p>
           The server implements the Nx OpenAPI specification (v20.8+). All
           endpoints support optional bearer token authentication when
-          <code>AUTH_TOKEN</code> is configured.
+          <code>AUTH_TOKEN</code> or <code>AUTH_TOKENS</code> is configured.
         </p>
 
         <h3>Health Check</h3>
@@ -593,6 +604,15 @@ export NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN=your-secure-token-here</code></p
         <p>
           Requests without a valid token will receive
           <code>401 Unauthorized</code>.
+        </p>
+        <p>
+          With <code>AUTH_TOKENS=repoA:tokA,repoB:tokB</code>, several
+          repositories can share one server. Each token reads and writes only
+          its own <code>STORAGE_DIR/&lt;name&gt;/</code> directory, so one
+          repository never sees another's cache. Names may contain letters,
+          digits, <code>_</code> and <code>-</code>; tokens may contain
+          <code>:</code>. Switching from <code>AUTH_TOKEN</code> causes one
+          cache miss, and the old flat files expire through normal cleanup.
         </p>
       </section>
 

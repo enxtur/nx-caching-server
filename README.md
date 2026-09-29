@@ -16,8 +16,11 @@ Configure the server using environment variables:
 | `CLEANUP_THRESHOLD`  | Duration after which unused cache entries are removed (hours only) | `1h`                 | `1h`, `24h`, `168h`  |
 | `PORT`               | Port the server listens on                           | `8090`               | `8080`               |
 | `AUTH_TOKEN`         | Bearer token required for all requests (optional)     | (unset = no auth)    | `my-secure-token`    |
+| `AUTH_TOKENS`        | Comma-separated `name:token` pairs, one per repository; each token only sees `STORAGE_DIR/<name>/` (optional) | (unset) | `repoA:tokA,repoB:tokB` |
 
 **Note:** `CLEANUP_THRESHOLD` uses hour-based durations (e.g. `24h` = 1 day, `168h` = 1 week).
+
+**Note:** `AUTH_TOKEN` and `AUTH_TOKENS` cannot be combined; the server exits at startup if both are set.
 
 ## Getting Started
 
@@ -100,6 +103,40 @@ Start it:
 ```bash
 docker compose up -d
 ```
+
+### Multiple repositories
+
+Several repositories can share one server while keeping their caches separate. Give each repository its own name and token with `AUTH_TOKENS`:
+
+```yaml
+services:
+  nx-cache:
+    image: enxtur/nx-caching-server:latest
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./nx-cache-data:/data
+    environment:
+      - STORAGE_DIR=/data
+      - AUTH_TOKENS=web-app:token-for-web-app,api:token-for-api
+      - CLEANUP_THRESHOLD=24h
+```
+
+Each token can only read and write its own subdirectory:
+
+```
+nx-cache-data/
+├── web-app/
+│   └── <hash>.cache
+└── api/
+    └── <hash>.cache
+```
+
+- Names may contain only letters, digits, `_` and `-`. Tokens may contain `:`; only the first `:` separates the name from the token.
+- Names and tokens must be unique.
+- Each repository sets its own token in `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN`; no other Nx changes are needed.
+- Switching from `AUTH_TOKEN` to `AUTH_TOKENS` moves cache files into per-name subdirectories, so Nx misses the cache once and rebuilds. The old flat files expire through normal cleanup.
 
 ## Configuring Nx Workspace
 
