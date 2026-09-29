@@ -2,8 +2,8 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -31,23 +32,25 @@ const (
 	cleanupThresholdKey = "CLEANUP_THRESHOLD"
 	portKey             = "PORT"
 	authTokenKey        = "AUTH_TOKEN"
+	authTokensKey       = "AUTH_TOKENS"
 )
 
 // validHash allows only characters that cannot form path separators or
 // traversal sequences, so the hash is always a single file name.
 var validHash = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
-// cacheFilePath returns the storage path for hash, or false if hash is invalid.
-func cacheFilePath(hash string) (string, bool) {
+// cacheFilePath returns the storage path for hash within namespace, or false
+// if hash is invalid. An empty namespace stores files directly in STORAGE_DIR.
+func cacheFilePath(namespace, hash string) (string, bool) {
 	if !validHash.MatchString(hash) {
 		return "", false
 	}
 	storageDir := GetEnv(storageDirKey, os.TempDir())
-	return filepath.Join(storageDir, fmt.Sprintf("%s.cache", hash)), true
+	return filepath.Join(storageDir, namespace, fmt.Sprintf("%s.cache", hash)), true
 }
 
 func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
-	filePath, ok := cacheFilePath(req.PathValue("hash"))
+	filePath, ok := cacheFilePath(namespaceFrom(req), req.PathValue("hash"))
 	if !ok {
 		http.Error(w, "Invalid hash", http.StatusBadRequest)
 		return
@@ -88,7 +91,7 @@ func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 }
 
 func CheckTaskOutput(w http.ResponseWriter, req *http.Request) {
-	filePath, ok := cacheFilePath(req.PathValue("hash"))
+	filePath, ok := cacheFilePath(namespaceFrom(req), req.PathValue("hash"))
 	if !ok {
 		http.Error(w, "Invalid hash", http.StatusBadRequest)
 		return
@@ -108,7 +111,7 @@ func CheckTaskOutput(w http.ResponseWriter, req *http.Request) {
 }
 
 func DownloadTaskOutput(w http.ResponseWriter, req *http.Request) {
-	filePath, ok := cacheFilePath(req.PathValue("hash"))
+	filePath, ok := cacheFilePath(namespaceFrom(req), req.PathValue("hash"))
 	if !ok {
 		http.Error(w, "Invalid hash", http.StatusBadRequest)
 		return
@@ -137,19 +140,65 @@ func DownloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	io.Copy(w, file)
 }
 
-func getAuthTokenHash() *[32]byte {
+// loadAuthTokens returns the SHA-256 hashes of the configured tokens mapped to
+// their namespace. It returns nil when authentication is disabled. A token set
+// through AUTH_TOKEN maps to the empty namespace (flat STORAGE_DIR).
+func loadAuthTokens() (map[[32]byte]string, error) {
 	authToken := os.Getenv(authTokenKey)
-	if authToken == "" {
-		return nil
+	authTokens := os.Getenv(authTokensKey)
+
+	if authToken != "" && authTokens != "" {
+		return nil, fmt.Errorf("%s and %s cannot be used together", authTokenKey, authTokensKey)
 	}
 
-	hash := sha256.Sum256([]byte(authToken))
-	return &hash
+	if authToken != "" {
+		return map[[32]byte]string{sha256.Sum256([]byte(authToken)): ""}, nil
+	}
+
+	if authTokens == "" {
+		return nil, nil
+	}
+
+	tokens := make(map[[32]byte]string)
+	names := make(map[string]bool)
+	for i, entry := range strings.Split(authTokens, ",") {
+		name, token, found := strings.Cut(strings.TrimSpace(entry), ":")
+		name, token = strings.TrimSpace(name), strings.TrimSpace(token)
+		if !found || name == "" || token == "" {
+			return nil, fmt.Errorf("%s entry %d: expected name:token", authTokensKey, i+1)
+		}
+		if !validHash.MatchString(name) {
+			return nil, fmt.Errorf("%s entry %d: invalid name %q (allowed: letters, digits, '_' and '-')", authTokensKey, i+1, name)
+		}
+		if names[name] {
+			return nil, fmt.Errorf("%s: duplicate name %q", authTokensKey, name)
+		}
+		hash := sha256.Sum256([]byte(token))
+		if _, ok := tokens[hash]; ok {
+			return nil, fmt.Errorf("%s: duplicate token for name %q", authTokensKey, name)
+		}
+		names[name] = true
+		tokens[hash] = name
+	}
+	return tokens, nil
 }
 
-func CheckBearerTokenMiddleware(authTokenHash *[32]byte, next http.HandlerFunc) http.HandlerFunc {
+type namespaceCtxKey struct{}
+
+// namespaceFrom returns the namespace assigned by CheckBearerTokenMiddleware,
+// or "" when none was set.
+func namespaceFrom(req *http.Request) string {
+	ns, _ := req.Context().Value(namespaceCtxKey{}).(string)
+	return ns
+}
+
+// CheckBearerTokenMiddleware authenticates the request against tokens and
+// stores the matching namespace in the request context. A nil map disables
+// authentication. Looking up the SHA-256 hash in a map is safe against timing
+// attacks: any timing difference leaks information about the hash, not the token.
+func CheckBearerTokenMiddleware(tokens map[[32]byte]string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if authTokenHash == nil {
+		if tokens == nil {
 			next(w, req)
 			return
 		}
@@ -166,14 +215,13 @@ func CheckBearerTokenMiddleware(authTokenHash *[32]byte, next http.HandlerFunc) 
 			return
 		}
 
-		userAuthTokenHash := sha256.Sum256([]byte(parts[1]))
-
-		if subtle.ConstantTimeCompare(authTokenHash[:], userAuthTokenHash[:]) != 1 {
+		ns, ok := tokens[sha256.Sum256([]byte(parts[1]))]
+		if !ok {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 
-		next(w, req)
+		next(w, req.WithContext(context.WithValue(req.Context(), namespaceCtxKey{}, ns)))
 	}
 }
 
@@ -242,6 +290,27 @@ func main() {
 		log.Fatalf("Invalid cleanup threshold: %v", err)
 	}
 
+	tokens, err := loadAuthTokens()
+	if err != nil {
+		log.Fatalf("Invalid auth configuration: %v", err)
+	}
+
+	storageDir := GetEnv(storageDirKey, os.TempDir())
+	var namespaces []string
+	for _, name := range tokens {
+		if name == "" {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Join(storageDir, name), 0755); err != nil {
+			log.Fatalf("Failed to create namespace directory %q: %v", name, err)
+		}
+		namespaces = append(namespaces, name)
+	}
+	if len(namespaces) > 0 {
+		sort.Strings(namespaces)
+		log.Printf("Loaded namespaces: %s", strings.Join(namespaces, ", "))
+	}
+
 	go func() {
 		ticker := time.NewTicker(cleanupThreshold)
 		defer ticker.Stop()
@@ -252,7 +321,7 @@ func main() {
 	}()
 
 	http.HandleFunc("/health", HandleHealth)
-	http.HandleFunc("/v1/cache/{hash}", CheckBearerTokenMiddleware(getAuthTokenHash(), HandleTask))
+	http.HandleFunc("/v1/cache/{hash}", CheckBearerTokenMiddleware(tokens, HandleTask))
 
 	port := GetEnv(portKey, "8090")
 
