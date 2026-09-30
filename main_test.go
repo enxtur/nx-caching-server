@@ -448,3 +448,29 @@ func TestCleanupNamespacedFiles(t *testing.T) {
 		t.Errorf("expected new namespaced file to remain: %v", err)
 	}
 }
+
+func TestDownloadKeepsEntryFromCleanup(t *testing.T) {
+	storageDir := t.TempDir()
+	t.Setenv(storageDirKey, storageDir)
+
+	filePath := filepath.Join(storageDir, "used.cache")
+	os.WriteFile(filePath, []byte("used"), 0644)
+	past := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(filePath, past, past); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest("GET", "/v1/cache/used", nil)
+	req.SetPathValue("hash", "used")
+	w := httptest.NewRecorder()
+	DownloadTaskOutput(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	cleanupOldRecords(time.Hour)
+
+	if _, err := os.Stat(filePath); err != nil {
+		t.Errorf("expected recently downloaded file to survive cleanup: %v", err)
+	}
+}
