@@ -15,8 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 func GetEnv(key, defaultValue string) string {
@@ -132,6 +130,13 @@ func DownloadTaskOutput(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		http.Error(w, "Failed to read the file", http.StatusInternalServerError)
 		return
+	}
+
+	// Mark the entry as recently used so cleanup keeps it. Filesystem atime
+	// is not reliable for this (noatime/relatime mounts, Windows).
+	now := time.Now()
+	if err := os.Chtimes(filePath, now, now); err != nil {
+		log.Printf("Failed to update access time for %s: %v", filePath, err)
 	}
 
 	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
@@ -263,15 +268,10 @@ func cleanupOldRecords(cleanupThreshold time.Duration) {
 			return nil
 		}
 
-		var stat unix.Stat_t
-		if err := unix.Stat(path, &stat); err != nil {
-			log.Printf("Skipping %s: unix.Stat failed: %v", path, err)
-			return nil
-		}
-
-		atime := time.Unix(stat.Atim.Sec, stat.Atim.Nsec)
-		if time.Since(atime) > cleanupThreshold {
-			log.Printf("Removing %s: last accessed %s ago", path, time.Since(atime))
+		// ModTime is refreshed on every download, so it tracks last use.
+		lastUsed := info.ModTime()
+		if time.Since(lastUsed) > cleanupThreshold {
+			log.Printf("Removing %s: last accessed %s ago", path, time.Since(lastUsed))
 			return os.Remove(path)
 		}
 		return nil
