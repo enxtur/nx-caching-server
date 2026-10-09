@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -472,5 +473,141 @@ func TestDownloadKeepsEntryFromCleanup(t *testing.T) {
 
 	if _, err := os.Stat(filePath); err != nil {
 		t.Errorf("expected recently downloaded file to survive cleanup: %v", err)
+	}
+}
+
+// gatedReader yields its first chunk, then blocks until release is closed.
+type gatedReader struct {
+	first   []byte
+	rest    []byte
+	started chan struct{}
+	release chan struct{}
+	stage   int
+}
+
+func (g *gatedReader) Read(p []byte) (int, error) {
+	switch g.stage {
+	case 0:
+		g.stage = 1
+		n := copy(p, g.first)
+		close(g.started)
+		return n, nil
+	case 1:
+		<-g.release
+		g.stage = 2
+		n := copy(p, g.rest)
+		return n, nil
+	}
+	return 0, io.EOF
+}
+
+func TestInProgressUploadIsNotVisible(t *testing.T) {
+	storageDir := t.TempDir()
+	t.Setenv(storageDirKey, storageDir)
+
+	body := &gatedReader{
+		first:   []byte("hello "),
+		rest:    []byte("world"),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	put := httptest.NewRequest("PUT", "/v1/cache/slow", body)
+	put.Header.Set("Content-Length", "11")
+	put.SetPathValue("hash", "slow")
+	putRec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		UploadTaskOutput(putRec, put)
+	}()
+	<-body.started
+
+	for _, method := range []string{"GET", "HEAD"} {
+		req := httptest.NewRequest(method, "/v1/cache/slow", nil)
+		req.SetPathValue("hash", "slow")
+		w := httptest.NewRecorder()
+		HandleTask(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s during upload: expected %d, got %d", method, http.StatusNotFound, w.Code)
+		}
+	}
+
+	close(body.release)
+	<-done
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("expected upload status %d, got %d", http.StatusOK, putRec.Code)
+	}
+
+	req := httptest.NewRequest("GET", "/v1/cache/slow", nil)
+	req.SetPathValue("hash", "slow")
+	w := httptest.NewRecorder()
+	DownloadTaskOutput(w, req)
+	if w.Code != http.StatusOK || w.Body.String() != "hello world" {
+		t.Errorf("expected full content after upload, got %d %q", w.Code, w.Body.String())
+	}
+
+	entries, _ := os.ReadDir(storageDir)
+	if len(entries) != 1 || entries[0].Name() != "slow.cache" {
+		t.Errorf("expected only slow.cache in storage dir, got %v", entries)
+	}
+	info, _ := os.Stat(filepath.Join(storageDir, "slow.cache"))
+	if info.Mode().Perm() != 0644 {
+		t.Errorf("expected mode 0644, got %v", info.Mode().Perm())
+	}
+}
+
+func TestFailedUploadLeavesNothing(t *testing.T) {
+	storageDir := t.TempDir()
+	t.Setenv(storageDirKey, storageDir)
+
+	req := httptest.NewRequest("PUT", "/v1/cache/short", strings.NewReader("abc"))
+	req.Header.Set("Content-Length", "10")
+	req.SetPathValue("hash", "short")
+	w := httptest.NewRecorder()
+	UploadTaskOutput(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+	if entries, _ := os.ReadDir(storageDir); len(entries) != 0 {
+		t.Errorf("expected empty storage dir, got %v", entries)
+	}
+}
+
+func TestPublishFileDoesNotOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	tmp := filepath.Join(dir, "x.cache.tmp-1")
+	final := filepath.Join(dir, "x.cache")
+	os.WriteFile(tmp, []byte("new"), 0644)
+	os.WriteFile(final, []byte("old"), 0644)
+
+	if err := publishFile(tmp, final); !os.IsExist(err) {
+		t.Fatalf("expected an already-exists error, got %v", err)
+	}
+	if got, _ := os.ReadFile(final); string(got) != "old" {
+		t.Errorf("existing entry was overwritten: %q", got)
+	}
+}
+
+func TestCleanupRemovesStaleTempFiles(t *testing.T) {
+	storageDir := t.TempDir()
+	t.Setenv(storageDirKey, storageDir)
+
+	stale := filepath.Join(storageDir, "a.cache.tmp-123")
+	fresh := filepath.Join(storageDir, "b.cache.tmp-456")
+	os.WriteFile(stale, []byte("x"), 0644)
+	os.WriteFile(fresh, []byte("x"), 0644)
+	past := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(stale, past, past); err != nil {
+		t.Fatal(err)
+	}
+
+	cleanupOldRecords(time.Hour)
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Error("expected stale temp file to be removed")
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Errorf("expected fresh temp file to remain: %v", err)
 	}
 }
