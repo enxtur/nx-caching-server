@@ -33,6 +33,10 @@ const (
 	authTokensKey       = "AUTH_TOKENS"
 )
 
+// tempInfix marks in-progress uploads (<hash>.cache.tmp-<random>), which are
+// never served and are removed by cleanup once stale.
+const tempInfix = ".tmp-"
+
 // validHash allows only characters that cannot form path separators or
 // traversal sequences, so the hash is always a single file name.
 var validHash = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
@@ -66,26 +70,54 @@ func UploadTaskOutput(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if _, err := os.Stat(filePath); err == nil {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+
+	// Write to a temp file and publish it atomically so that concurrent
+	// downloads never observe a partially written entry.
+	file, err := os.CreateTemp(filepath.Dir(filePath), filepath.Base(filePath)+tempInfix+"*")
 	if err != nil {
+		http.Error(w, "Failed to create file", http.StatusInternalServerError)
+		return
+	}
+	tmpPath := file.Name()
+	defer os.Remove(tmpPath)
+
+	_, err = io.CopyN(file, req.Body, contentLength)
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Chmod(tmpPath, 0644)
+	}
+	if err != nil {
+		http.Error(w, "Failed to write file", http.StatusInternalServerError)
+		return
+	}
+
+	if err := publishFile(tmpPath, filePath); err != nil {
 		if os.IsExist(err) {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
-		http.Error(w, "Failed to create file", http.StatusInternalServerError)
-		return
-	}
-
-	_, err = io.CopyN(file, req.Body, contentLength)
-	if err != nil {
-		file.Close()
-		os.Remove(filePath) // Clean up incomplete file
 		http.Error(w, "Failed to write file", http.StatusInternalServerError)
 		return
 	}
-	file.Close()
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// publishFile atomically makes tmpPath visible as finalPath without replacing
+// an existing entry (os.IsExist is true in that case). It falls back to rename
+// on filesystems without hard link support.
+func publishFile(tmpPath, finalPath string) error {
+	err := os.Link(tmpPath, finalPath)
+	if err == nil || os.IsExist(err) {
+		return err
+	}
+	return os.Rename(tmpPath, finalPath)
 }
 
 func CheckTaskOutput(w http.ResponseWriter, req *http.Request) {
@@ -264,7 +296,7 @@ func cleanupOldRecords(cleanupThreshold time.Duration) {
 			return nil
 		}
 
-		if !strings.HasSuffix(path, ".cache") {
+		if !strings.HasSuffix(path, ".cache") && !strings.Contains(filepath.Base(path), ".cache"+tempInfix) {
 			return nil
 		}
 
